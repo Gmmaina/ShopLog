@@ -11,7 +11,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import javax.inject.Inject
+
+data class MonthGroup(
+    val monthName: String,
+    val totalCents: Long,
+    val lists: List<ShoppingListWithItems>
+)
 
 @HiltViewModel
 class HistoryViewModel @Inject constructor(
@@ -21,9 +30,9 @@ class HistoryViewModel @Inject constructor(
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    val savedLists: StateFlow<List<ShoppingListWithItems>> = repository.getSavedListsWithItemsFlow()
+    val groupedLists: StateFlow<List<MonthGroup>> = repository.getSavedListsWithItemsFlow()
         .combine(_searchQuery) { lists, query ->
-            if (query.isBlank()) {
+            val filtered = if (query.isBlank()) {
                 lists
             } else {
                 val q = query.trim().lowercase()
@@ -31,6 +40,24 @@ class HistoryViewModel @Inject constructor(
                     itemWithList.list.title.lowercase().contains(q) ||
                             (itemWithList.list.location?.lowercase()?.contains(q) == true)
                 }
+            }
+
+            val groupedMap = filtered.groupBy { itemWithList ->
+                SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(Date(itemWithList.list.createdAt))
+            }
+
+            groupedMap.entries.map { (_, monthLists) ->
+                val monthName = if (monthLists.isNotEmpty()) {
+                    SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(Date(monthLists.first().list.createdAt))
+                } else "Unknown"
+
+                MonthGroup(
+                    monthName = monthName,
+                    totalCents = monthLists.sumOf { it.list.totalCents },
+                    lists = monthLists
+                )
+            }.sortedByDescending { group ->
+                group.lists.maxOfOrNull { it.list.createdAt } ?: 0L
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 

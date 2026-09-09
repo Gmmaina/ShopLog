@@ -7,6 +7,10 @@ sealed class Screen(val route: String) {
         fun createRoute(listId: String) = "edit_shopping/$listId"
     }
     object History : Screen("history")
+    object Analytics : Screen("analytics")
+    object AnalyticsMonthDetail : Screen("analytics_detail/{monthYearKey}") {
+        fun createRoute(monthYearKey: String) = "analytics_detail/$monthYearKey"
+    }
     object Details : Screen("details/{listId}") {
         fun createRoute(listId: String) = "details/$listId"
     }

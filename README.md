@@ -17,7 +17,8 @@ Built with modern Android engineering practices including Jetpack Compose, Mater
 - **Digital Receipt View**: Displays shopping lists in a clean, itemized digital receipt card format with quantity, unit price, subtotal, and store location details.
 - **Unfinished Draft Recovery**: Automatically captures uncommitted shopping lists so users can resume shopping seamlessly.
 - **Short Code Sharing**: Generate unique 7-character alphanumeric share codes (e.g., `AUG123D`) for any shopping list. Anyone with the code can retrieve and view the shared list on their device or save a personal copy.
-- **Shopping History & Search**: Archive past shopping receipts with instantaneous keyword search by title or store location.
+- **Month-Grouped Shopping History**: Archive past shopping receipts automatically categorized by month headers (e.g. September 2025) displaying total monthly expenditure alongside instantaneous keyword search.
+- **Expenditure Analytics**: Dedicated Analytics dashboard displaying current month expenditure, all-time total expenditure, and a monthly expenditure breakdown. Users can click any month to view a detailed breakdown of all receipts for that month and jump directly to any receipt.
 - **Flexible Authentication & Migration**: Supports Guest (Anonymous) mode, Email/Password, and Google Sign-In via Credential Manager API. Local anonymous shopping lists automatically re-assign and migrate upon signing in.
 - **Multi-Currency & Customization**: Supports multiple currency symbols (KSh, $, €, £, ₹, ₦, R, UGX, TZS) and theme preferences (Light, Dark, System default).
 
@@ -81,9 +82,10 @@ com.example.shoplog/
     ├── components/                 # Reusable Compose UI components (ReceiptCard, BottomSheets)
     ├── navigation/                 # NavGraph and Screen route definitions
     ├── screens/
+    │   ├── analytics/              # Expenditure analytics & monthly detail views
     │   ├── auth/                   # Authentication viewmodels and bottom sheets
     │   ├── details/                # Saved receipt and details view
-    │   ├── history/                # History list and search view
+    │   ├── history/                # Month-grouped history list and search view
     │   ├── home/                   # Primary dashboard view
     │   ├── settings/               # App configuration and preferences
     │   ├── share/                  # Sharing & retrieve code dialogs

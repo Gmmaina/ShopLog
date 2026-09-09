@@ -3,6 +3,7 @@ package com.example.shoplog.ui.navigation
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
@@ -14,6 +15,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -23,6 +25,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.shoplog.ui.screens.analytics.AnalyticsMonthDetailScreen
+import com.example.shoplog.ui.screens.analytics.AnalyticsMonthDetailViewModel
+import com.example.shoplog.ui.screens.analytics.AnalyticsScreen
+import com.example.shoplog.ui.screens.analytics.AnalyticsViewModel
 import com.example.shoplog.ui.screens.details.ShoppingDetailsScreen
 import com.example.shoplog.ui.screens.details.ShoppingDetailsViewModel
 import com.example.shoplog.ui.screens.history.HistoryScreen
@@ -44,12 +50,14 @@ fun MainNavGraph(
     val bottomNavItems = listOf(
         BottomNavItem("Home", Screen.Home.route, Icons.Default.Home),
         BottomNavItem("History", Screen.History.route, Icons.Default.History),
+        BottomNavItem("Analytics", Screen.Analytics.route, Icons.Default.Analytics),
         BottomNavItem("Settings", Screen.Settings.route, Icons.Default.Settings)
     )
 
     val showBottomBar = currentRoute in listOf(
         Screen.Home.route,
         Screen.History.route,
+        Screen.Analytics.route,
         Screen.Settings.route
     )
 
@@ -136,6 +144,32 @@ fun MainNavGraph(
                 )
             }
 
+            // Analytics Destination
+            composable(Screen.Analytics.route) {
+                val viewModel = hiltViewModel<AnalyticsViewModel>()
+                AnalyticsScreen(
+                    viewModel = viewModel,
+                    onSelectMonth = { monthYearKey ->
+                        navController.navigate(Screen.AnalyticsMonthDetail.createRoute(monthYearKey))
+                    }
+                )
+            }
+
+            // Analytics Month Detail Destination
+            composable(
+                route = Screen.AnalyticsMonthDetail.route,
+                arguments = listOf(navArgument("monthYearKey") { type = NavType.StringType })
+            ) {
+                val viewModel = hiltViewModel<AnalyticsMonthDetailViewModel>()
+                AnalyticsMonthDetailScreen(
+                    viewModel = viewModel,
+                    onNavigateBack = { navController.popBackStack() },
+                    onViewListDetails = { listId ->
+                        navController.navigate(Screen.Details.createRoute(listId))
+                    }
+                )
+            }
+
             // Details Destination
             composable(
                 route = Screen.Details.route,
@@ -165,5 +199,5 @@ fun MainNavGraph(
 private data class BottomNavItem(
     val label: String,
     val route: String,
-    val icon: androidx.compose.ui.graphics.vector.ImageVector
+    val icon: ImageVector
 )
