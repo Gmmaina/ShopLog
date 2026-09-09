@@ -489,13 +489,14 @@ fun SettingsScreen(
 }
 
 private fun shareInvite(context: Context) {
+    val downloadUrl = "https://github.com/Gmmaina/ShopLog/releases"
     val sendIntent = Intent().apply {
         action = Intent.ACTION_SEND
         putExtra(
             Intent.EXTRA_TEXT,
-            "Join me on ShopLog! Create, calculate, and share smart shopping lists offline & online with ease."
+            "Download ShopLog APK to create, calculate, and share smart shopping lists with ease!\n\nDownload link: $downloadUrl"
         )
         type = "text/plain"
     }
-    context.startActivity(Intent.createChooser(sendIntent, "Invite to ShopLog"))
+    context.startActivity(Intent.createChooser(sendIntent, "Share ShopLog APK Download Link"))
 }

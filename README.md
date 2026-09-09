@@ -104,6 +104,14 @@ com.example.shoplog/
 
 ---
 
+## Download APK
+
+You can download the latest compiled ShopLog Android APK directly to install on any Android device (Android 7.0+ / API 24+):
+
+- **Latest Releases & APK**: [https://github.com/Gmmaina/ShopLog/releases](https://github.com/Gmmaina/ShopLog/releases)
+
+---
+
 ## Getting Started
 
 ### Prerequisites
