@@ -86,9 +86,9 @@ fun HomeScreen(
             isLoading = isLoading,
             onDismiss = { showRetrieveDialog = false },
             onRetrieve = { code ->
-                viewModel.retrieveSharedList(code) {
+                viewModel.retrieveSharedList(code) { targetListId ->
                     showRetrieveDialog = false
-                    onViewSavedDetails("shared")
+                    onViewSavedDetails(targetListId)
                 }
             }
         )

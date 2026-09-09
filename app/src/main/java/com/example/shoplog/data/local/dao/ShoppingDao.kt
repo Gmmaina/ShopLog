@@ -114,4 +114,16 @@ interface ShoppingDao {
 
     @Query("DELETE FROM shopping_lists WHERE id = :listId")
     suspend fun hardDeleteList(listId: String): Int
+
+    @Query("DELETE FROM shopping_items")
+    suspend fun deleteAllItems()
+
+    @Query("DELETE FROM shopping_lists")
+    suspend fun deleteAllLists()
+
+    @Transaction
+    suspend fun clearAllData() {
+        deleteAllItems()
+        deleteAllLists()
+    }
 }

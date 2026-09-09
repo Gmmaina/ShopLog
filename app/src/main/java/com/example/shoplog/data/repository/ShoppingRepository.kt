@@ -265,12 +265,33 @@ class ShoppingRepository @Inject constructor(
     private val _sharedPreviewList = MutableStateFlow<ShoppingListWithItems?>(null)
     val sharedPreviewList: StateFlow<ShoppingListWithItems?> = _sharedPreviewList.asStateFlow()
 
-    suspend fun retrieveSharedListByCode(code: String): Result<ShoppingListWithItems> {
+    suspend fun retrieveSharedListByCode(code: String): Result<String> {
         val result = firebaseSyncManager.retrieveSharedListByCode(code)
-        result.onSuccess { itemWithList ->
-            _sharedPreviewList.value = itemWithList
+        return result.map { itemWithList ->
+            val currentUid = authRepository.currentUserId
+            val existingLocalList = shoppingDao.getListByIdOnce(itemWithList.list.id)
+
+            val isMyOwnList = (itemWithList.list.ownerId == currentUid && currentUid != "offline_user" && currentUid.isNotBlank())
+                    || (existingLocalList != null && !existingLocalList.isSharedWithMe)
+
+            if (isMyOwnList) {
+                val ownedEntity = itemWithList.list.copy(
+                    ownerId = if (itemWithList.list.ownerId.isBlank()) currentUid else itemWithList.list.ownerId,
+                    isSharedWithMe = false,
+                    syncStatus = SyncStatus.SYNCED
+                )
+                shoppingDao.insertOrUpdateList(ownedEntity)
+                shoppingDao.insertOrUpdateItems(itemWithList.items)
+                _sharedPreviewList.value = null
+                itemWithList.list.id
+            } else if (existingLocalList != null) {
+                _sharedPreviewList.value = null
+                existingLocalList.id
+            } else {
+                _sharedPreviewList.value = itemWithList
+                "shared"
+            }
         }
-        return result
     }
 
     suspend fun saveSharedListAsCopy(sharedWithItems: ShoppingListWithItems): String {

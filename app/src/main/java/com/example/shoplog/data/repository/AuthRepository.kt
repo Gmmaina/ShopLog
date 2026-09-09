@@ -82,6 +82,7 @@ class AuthRepository @Inject constructor(
     suspend fun signUpWithEmailPassword(email: String, pass: String): Result<String> {
         val instance = auth ?: return Result.failure(Exception("Firebase Auth not initialized."))
         val oldUid = currentUserId
+        val wasAnonymous = isAnonymous
 
         return try {
             val credential = EmailAuthProvider.getCredential(email, pass)
@@ -104,8 +105,12 @@ class AuthRepository @Inject constructor(
             refreshUser()
 
             if (newUid.isNotBlank()) {
-                if (oldUid != newUid) {
-                    shoppingDao.reassignListOwner(oldUid, newUid)
+                if (wasAnonymous) {
+                    if (oldUid != newUid) {
+                        shoppingDao.reassignListOwner(oldUid, newUid)
+                    }
+                } else if (oldUid != newUid) {
+                    shoppingDao.clearAllData()
                 }
                 runCatching { firebaseSyncManager.fetchAndSyncRemoteUserLists(newUid) }
                 runCatching { firebaseSyncManager.syncUnsyncedLists() }
@@ -120,6 +125,7 @@ class AuthRepository @Inject constructor(
     suspend fun signInWithEmailPassword(email: String, pass: String): Result<String> {
         val instance = auth ?: return Result.failure(Exception("Firebase Auth not initialized."))
         val oldUid = currentUserId
+        val wasAnonymous = isAnonymous
 
         return try {
             val authResult = instance.signInWithEmailAndPassword(email, pass).await()
@@ -128,8 +134,12 @@ class AuthRepository @Inject constructor(
             refreshUser()
 
             if (newUid.isNotBlank()) {
-                if (oldUid != newUid) {
-                    shoppingDao.reassignListOwner(oldUid, newUid)
+                if (wasAnonymous) {
+                    if (oldUid != newUid) {
+                        shoppingDao.reassignListOwner(oldUid, newUid)
+                    }
+                } else if (oldUid != newUid) {
+                    shoppingDao.clearAllData()
                 }
                 runCatching { firebaseSyncManager.fetchAndSyncRemoteUserLists(newUid) }
                 runCatching { firebaseSyncManager.syncUnsyncedLists() }
@@ -144,6 +154,7 @@ class AuthRepository @Inject constructor(
     suspend fun signInWithGoogleIdToken(idToken: String): Result<String> {
         val instance = auth ?: return Result.failure(Exception("Firebase Auth not initialized."))
         val oldUid = currentUserId
+        val wasAnonymous = isAnonymous
 
         return try {
             val credential = GoogleAuthProvider.getCredential(idToken, null)
@@ -166,8 +177,12 @@ class AuthRepository @Inject constructor(
             refreshUser()
 
             if (newUid.isNotBlank()) {
-                if (oldUid != newUid) {
-                    shoppingDao.reassignListOwner(oldUid, newUid)
+                if (wasAnonymous) {
+                    if (oldUid != newUid) {
+                        shoppingDao.reassignListOwner(oldUid, newUid)
+                    }
+                } else if (oldUid != newUid) {
+                    shoppingDao.clearAllData()
                 }
                 runCatching { firebaseSyncManager.fetchAndSyncRemoteUserLists(newUid) }
                 runCatching { firebaseSyncManager.syncUnsyncedLists() }
@@ -180,6 +195,11 @@ class AuthRepository @Inject constructor(
     }
 
     suspend fun signOut() {
+        val uid = currentUserId
+        if (!isAnonymous && uid.isNotBlank() && uid != "offline_user") {
+            runCatching { firebaseSyncManager.syncUnsyncedLists() }
+        }
+        shoppingDao.clearAllData()
         auth?.signOut()
         signInAnonymously()
         refreshUser()

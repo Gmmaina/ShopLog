@@ -45,14 +45,14 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun retrieveSharedList(code: String, onSuccess: () -> Unit) {
+    fun retrieveSharedList(code: String, onSuccess: (listId: String) -> Unit) {
         viewModelScope.launch {
             _isLoading.value = true
             _retrieveMessage.value = null
             val result = repository.retrieveSharedListByCode(code)
             _isLoading.value = false
-            result.onSuccess {
-                onSuccess()
+            result.onSuccess { targetListId ->
+                onSuccess(targetListId)
             }.onFailure { exception ->
                 _retrieveMessage.value = exception.message ?: "Failed to retrieve shopping list."
             }

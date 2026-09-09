@@ -12,7 +12,7 @@ class ShareCodeGeneratorTest {
     fun generateCode_returnsSevenCharAlphanumericCode() {
         val code = ShareCodeGenerator.generateCode()
         assertEquals(7, code.length)
-        assertTrue(code.all { it.isLetterOrDigit() && it.isUpperCase() })
+        assertTrue(code.all { it.isLetterOrDigit() && !it.isLowerCase() })
     }
 
     @Test
