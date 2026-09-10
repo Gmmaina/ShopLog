@@ -17,8 +17,12 @@ Built with modern Android engineering practices including Jetpack Compose, Mater
 - **Digital Receipt View**: Displays shopping lists in a clean, itemized digital receipt card format with quantity, unit price, subtotal, and store location details.
 - **Unfinished Draft Recovery**: Automatically captures uncommitted shopping lists so users can resume shopping seamlessly.
 - **Short Code Sharing**: Generate unique 7-character alphanumeric share codes (e.g., `AUG123D`) for any shopping list. Anyone with the code can retrieve and view the shared list on their device or save a personal copy.
+- **Barcode Product Scanning**: Scan physical product barcodes directly when adding items to automatically identify and populate products.
+- **Smart Item Suggestions & Auto-Complete**: Search and auto-complete common grocery items as you type with instant suggestion chips.
+- **Import & Export to CSV / Excel**: Import shopping list items from CSV files and export itemized receipt spreadsheets directly to Excel or Google Sheets.
+- **Physical Receipt Photo Attachment**: Attach and store photos of physical store receipts directly to shopping lists for future reference.
 - **Month-Grouped Shopping History**: Archive past shopping receipts automatically categorized by month headers (e.g. September 2025) displaying total monthly expenditure alongside instantaneous keyword search.
-- **Expenditure Analytics**: Dedicated Analytics dashboard displaying current month expenditure, all-time total expenditure, and a monthly expenditure breakdown. Users can click any month to view a detailed breakdown of all receipts for that month and jump directly to any receipt.
+- **Expenditure Analytics**: Dedicated Analytics dashboard displaying current month expenditure, all-time total expenditure in side-by-side cards, and a monthly expenditure breakdown. Users can click any month to view a detailed breakdown of all receipts for that month.
 - **Flexible Authentication & Migration**: Supports Guest (Anonymous) mode, Email/Password, and Google Sign-In via Credential Manager API. Local anonymous shopping lists automatically re-assign and migrate upon signing in.
 - **Multi-Currency & Customization**: Supports multiple currency symbols (KSh, $, €, £, ₹, ₦, R, UGX, TZS) and theme preferences (Light, Dark, System default).
 

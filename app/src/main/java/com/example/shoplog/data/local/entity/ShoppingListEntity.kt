@@ -17,5 +17,6 @@ data class ShoppingListEntity(
     val syncStatus: SyncStatus = SyncStatus.PENDING_CREATE,
     val isSharedWithMe: Boolean = false,
     val shareCode: String? = null,
-    val isDraft: Boolean = false
+    val isDraft: Boolean = false,
+    val receiptPhotoPath: String? = null
 )

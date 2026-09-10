@@ -1,17 +1,26 @@
 package com.example.shoplog.ui.screens.shopping
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Title
 import androidx.compose.material3.Button
@@ -19,6 +28,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -34,8 +44,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.shoplog.core.util.Money
 import com.example.shoplog.data.local.entity.ShoppingItemEntity
 import com.example.shoplog.ui.components.AddItemBottomSheet
 import com.example.shoplog.ui.components.ReceiptCard
@@ -49,6 +61,7 @@ fun CreateEditShoppingScreen(
     onNavigateBack: () -> Unit,
     onSaved: (savedListId: String) -> Unit
 ) {
+    val context = LocalContext.current
     val listWithItems by viewModel.shoppingListWithItems.collectAsState()
     val currencySymbol by viewModel.currencySymbol.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -60,6 +73,47 @@ fun CreateEditShoppingScreen(
 
     var showAddItemSheet by remember { mutableStateOf(false) }
     var itemToEdit by remember { mutableStateOf<ShoppingItemEntity?>(null) }
+
+    val csvImportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            try {
+                context.contentResolver.openInputStream(it)?.bufferedReader()?.useLines { lines ->
+                    lines.drop(1).forEach { line ->
+                        val tokens = line.split(",")
+                        if (tokens.isNotEmpty()) {
+                            val name = tokens[0].trim().removeSurrounding("\"")
+                            val qty = tokens.getOrNull(1)?.trim()?.toIntOrNull() ?: 1
+                            val priceStr = tokens.getOrNull(2)?.trim() ?: "0"
+                            val priceCents = Money.parseToCents(priceStr)
+                            if (name.isNotBlank()) {
+                                viewModel.addOrUpdateItem(null, name, qty, priceCents)
+                            }
+                        }
+                    }
+                }
+                scope.launch {
+                    snackbarHostState.showSnackbar("Items imported successfully from CSV!")
+                }
+            } catch (e: Exception) {
+                scope.launch {
+                    snackbarHostState.showSnackbar("Failed to import CSV: ${e.message}")
+                }
+            }
+        }
+    }
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            viewModel.attachReceiptPhoto(it.toString())
+            scope.launch {
+                snackbarHostState.showSnackbar("Receipt photo attached!")
+            }
+        }
+    }
 
     LaunchedEffect(listIdParam) {
         viewModel.initList(listIdParam)
@@ -159,7 +213,35 @@ fun CreateEditShoppingScreen(
                 shape = RoundedCornerShape(14.dp)
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Quick Tools Row: Import CSV & Attach Photo
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { csvImportLauncher.launch("*/*") },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Import CSV")
+                }
+
+                OutlinedButton(
+                    onClick = { photoPickerLauncher.launch("image/*") },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.AddAPhoto, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Attach Photo")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Digital Receipt Card Component
             ReceiptCard(

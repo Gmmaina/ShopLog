@@ -1,5 +1,12 @@
 package com.example.shoplog.ui.screens.details
 
+import android.content.Context
+import android.content.Intent
+import android.graphics.BitmapFactory
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,10 +22,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.BookmarkAdded
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
@@ -44,9 +53,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-
+import com.example.shoplog.core.util.Money
+import com.example.shoplog.data.local.entity.ShoppingItemEntity
 import com.example.shoplog.ui.components.ReceiptCard
 import com.example.shoplog.ui.screens.share.ShareShoppingDialog
 import java.text.SimpleDateFormat
@@ -61,6 +74,7 @@ fun ShoppingDetailsScreen(
     onNavigateBack: () -> Unit,
     onEditList: (listId: String) -> Unit
 ) {
+    val context = LocalContext.current
     val listWithItems by viewModel.shoppingListWithItems.collectAsState()
     val isSharedPreview by viewModel.isSharedPreview.collectAsState()
     val currencySymbol by viewModel.currencySymbol.collectAsState()
@@ -68,6 +82,14 @@ fun ShoppingDetailsScreen(
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showShareDialog by remember { mutableStateOf(false) }
     var generatedShareCode by remember { mutableStateOf("") }
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            viewModel.attachReceiptPhoto(it.toString())
+        }
+    }
 
     LaunchedEffect(listIdParam) {
         viewModel.initListId(listIdParam)
@@ -116,6 +138,15 @@ fun ShoppingDetailsScreen(
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    if (listWithItems != null) {
+                        IconButton(onClick = {
+                            exportListToCsv(context, listWithItems!!.list.title, listWithItems!!.items, listWithItems!!.list.totalCents, currencySymbol)
+                        }) {
+                            Icon(Icons.Default.FileDownload, contentDescription = "Export CSV Spreadsheet")
+                        }
                     }
                 }
             )
@@ -214,7 +245,65 @@ fun ShoppingDetailsScreen(
                     isEditable = false
                 )
 
-                Spacer(modifier = Modifier.height(24.dp))
+                // Receipt Photo Preview & Attachment Section
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Attached Physical Receipt",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            OutlinedButton(
+                                onClick = { photoPickerLauncher.launch("image/*") },
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Icon(Icons.Default.AddAPhoto, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(if (list.receiptPhotoPath.isNullOrBlank()) "Attach Photo" else "Change")
+                            }
+                        }
+
+                        if (!list.receiptPhotoPath.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            val uri = Uri.parse(list.receiptPhotoPath)
+                            val bitmap = remember(list.receiptPhotoPath) {
+                                try {
+                                    context.contentResolver.openInputStream(uri)?.use { stream ->
+                                        BitmapFactory.decodeStream(stream)
+                                    }?.asImageBitmap()
+                                } catch (e: Exception) {
+                                    null
+                                }
+                            }
+
+                            if (bitmap != null) {
+                                Image(
+                                    bitmap = bitmap,
+                                    contentDescription = "Physical Receipt Image",
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(220.dp),
+                                    contentScale = ContentScale.Crop
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
 
                 if (isSharedPreview) {
                     // Save list button for shared view
@@ -286,4 +375,30 @@ fun ShoppingDetailsScreen(
             }
         }
     }
+}
+
+private fun exportListToCsv(
+    context: Context,
+    title: String,
+    items: List<ShoppingItemEntity>,
+    totalCents: Long,
+    currencySymbol: String
+) {
+    val csvContent = StringBuilder().apply {
+        append("Item Name,Quantity,Unit Price ($currencySymbol),Subtotal ($currencySymbol)\n")
+        items.forEach { item ->
+            val unitPrice = Money.format(item.unitPriceCents, "").trim()
+            val subtotal = Money.format(item.subtotalCents, "").trim()
+            append("\"${item.name.replace("\"", "\"\"")}\",${item.quantity},$unitPrice,$subtotal\n")
+        }
+        append("\nGrand Total,,,,${Money.format(totalCents, currencySymbol)}\n")
+    }.toString()
+
+    val sendIntent = Intent().apply {
+        action = Intent.ACTION_SEND
+        putExtra(Intent.EXTRA_TEXT, csvContent)
+        putExtra(Intent.EXTRA_SUBJECT, "$title - Shopping Receipt CSV")
+        type = "text/csv"
+    }
+    context.startActivity(Intent.createChooser(sendIntent, "Export Receipt CSV / Excel"))
 }

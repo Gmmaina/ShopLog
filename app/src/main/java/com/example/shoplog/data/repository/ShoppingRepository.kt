@@ -133,6 +133,16 @@ class ShoppingRepository @Inject constructor(
         shoppingDao.insertOrUpdateList(updatedList)
     }
 
+    suspend fun updateReceiptPhotoPath(listId: String, photoPath: String?) {
+        val list = shoppingDao.getListByIdOnce(listId) ?: return
+        val updatedList = list.copy(
+            receiptPhotoPath = photoPath,
+            updatedAt = System.currentTimeMillis(),
+            syncStatus = if (list.syncStatus == SyncStatus.SYNCED) SyncStatus.PENDING_UPDATE else list.syncStatus
+        )
+        shoppingDao.insertOrUpdateList(updatedList)
+    }
+
     suspend fun addOrUpdateItem(
         listId: String,
         itemId: String? = null,

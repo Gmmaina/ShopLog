@@ -86,4 +86,11 @@ class CreateEditShoppingViewModel @Inject constructor(
             onSaved(listId)
         }
     }
+
+    fun attachReceiptPhoto(photoPath: String?) {
+        val listId = _currentListId.value ?: return
+        viewModelScope.launch {
+            repository.updateReceiptPhotoPath(listId, photoPath)
+        }
+    }
 }
