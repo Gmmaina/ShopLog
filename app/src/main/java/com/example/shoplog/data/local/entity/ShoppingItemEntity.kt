@@ -25,6 +25,8 @@ data class ShoppingItemEntity(
     val quantity: Int,
     val unitPriceCents: Long,
     val subtotalCents: Long,
+    val barcode: String? = null,
+    val isPurchased: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
     val deletedAt: Long? = null,

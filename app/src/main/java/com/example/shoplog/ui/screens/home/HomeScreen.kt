@@ -17,8 +17,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.Button
@@ -48,6 +49,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.shoplog.core.util.Money
+import com.example.shoplog.data.repository.SharedListResult
 import com.example.shoplog.ui.components.OfflineStatusBanner
 import com.example.shoplog.ui.screens.share.RetrieveCodeDialog
 import java.text.SimpleDateFormat
@@ -66,6 +68,7 @@ fun HomeScreen(
     val savedCount by viewModel.savedListsCount.collectAsState()
     val latestSaved by viewModel.latestSavedList.collectAsState()
     val latestDraft by viewModel.latestDraftList.collectAsState()
+    val activeSessions by viewModel.activeLiveLists.collectAsState()
     val currencySymbol by viewModel.currencySymbol.collectAsState()
     val isOnline by viewModel.isOnline.collectAsState()
     val retrieveMessage by viewModel.retrieveMessage.collectAsState()
@@ -86,9 +89,16 @@ fun HomeScreen(
             isLoading = isLoading,
             onDismiss = { showRetrieveDialog = false },
             onRetrieve = { code ->
-                viewModel.retrieveSharedList(code) { targetListId ->
+                viewModel.retrieveSharedList(code) { sharedResult ->
                     showRetrieveDialog = false
-                    onViewSavedDetails(targetListId)
+                    when (sharedResult) {
+                        is SharedListResult.LiveSession -> {
+                            onCreateNewShopping(sharedResult.listId)
+                        }
+                        is SharedListResult.CompletedReceipt -> {
+                            onViewSavedDetails(sharedResult.listId)
+                        }
+                    }
                 }
             }
         )
@@ -210,53 +220,128 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Unfinished Shopping Quick Access Card (if draft exists)
-            latestDraft?.let { draft ->
-                OutlinedCard(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onContinueDraft(draft.list.id) },
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.outlinedCardColors(
-                        containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f)
-                    )
-                ) {
-                    Row(
+            // Live Shopping Sessions in Progress Section
+            if (activeSessions.isNotEmpty()) {
+                Text(
+                    text = "Live Shopping in Progress",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                activeSessions.forEach { activeItem ->
+                    Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Unfinished Shopping Draft",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.tertiary
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = draft.list.title,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "${draft.items.size} items • ${Money.format(draft.list.totalCents, currencySymbol)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Icon(
-                            imageVector = Icons.Default.ArrowForward,
-                            contentDescription = "Continue",
-                            tint = MaterialTheme.colorScheme.tertiary
+                            .clickable { onCreateNewShopping(activeItem.list.id) },
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer
                         )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(18.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Group,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = activeItem.list.title,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                                Text(
+                                    text = "${activeItem.items.size} items • ${if (activeItem.list.isSharedWithMe) "Joined Member" else "Session Owner"}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
+                                )
+                            }
+
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = Money.format(activeItem.list.totalCents, currencySymbol),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                                Text(
+                                    text = "Tap to Join/Edit →",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
                     }
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            // Unfinished Shopping Quick Access Card (if draft exists)
+            latestDraft?.let { draft ->
+                if (activeSessions.none { it.list.id == draft.list.id }) {
+                    OutlinedCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onContinueDraft(draft.list.id) },
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.outlinedCardColors(
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Unfinished Shopping Draft",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.tertiary
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = draft.list.title,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "${draft.items.size} items • ${Money.format(draft.list.totalCents, currencySymbol)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.Default.ArrowForward,
+                                contentDescription = "Continue",
+                                tint = MaterialTheme.colorScheme.tertiary
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
             }
 
             // Quick Actions & Overview Section
@@ -303,7 +388,7 @@ fun HomeScreen(
                     }
                 }
 
-                // Retrieve Code Card
+                // Join Live Shopping Session Card
                 Card(
                     modifier = Modifier
                         .weight(1f)
@@ -315,8 +400,8 @@ fun HomeScreen(
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Icon(
-                            imageVector = Icons.Default.QrCode,
-                            contentDescription = "Retrieve",
+                            imageVector = Icons.Default.GroupAdd,
+                            contentDescription = "Join Live Session",
                             tint = MaterialTheme.colorScheme.secondary
                         )
                         Spacer(modifier = Modifier.height(8.dp))
@@ -326,7 +411,7 @@ fun HomeScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "Get Shared List",
+                            text = "Live or Shared List",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

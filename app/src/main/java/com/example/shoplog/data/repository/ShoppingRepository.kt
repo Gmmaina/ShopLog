@@ -3,13 +3,14 @@ package com.example.shoplog.data.repository
 import android.content.Context
 import com.example.shoplog.core.model.SyncStatus
 import com.example.shoplog.core.util.Money
+import com.example.shoplog.core.util.NetworkMonitor
 import com.example.shoplog.core.util.ShareCodeGenerator
 import com.example.shoplog.data.local.dao.ShoppingDao
 import com.example.shoplog.data.local.entity.ShoppingItemEntity
 import com.example.shoplog.data.local.entity.ShoppingListEntity
 import com.example.shoplog.data.local.entity.ShoppingListWithItems
 import com.example.shoplog.data.remote.FirebaseSyncManager
-import com.example.shoplog.core.util.NetworkMonitor
+import com.google.firebase.firestore.ListenerRegistration
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +25,11 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+
+sealed class SharedListResult {
+    data class LiveSession(val listId: String) : SharedListResult()
+    data class CompletedReceipt(val listId: String) : SharedListResult()
+}
 
 @Singleton
 class ShoppingRepository @Inject constructor(
@@ -73,6 +79,10 @@ class ShoppingRepository @Inject constructor(
         return shoppingDao.getSavedListsWithItemsFlow()
     }
 
+    fun getActiveLiveListsFlow(): Flow<List<ShoppingListWithItems>> {
+        return shoppingDao.getActiveLiveListsFlow()
+    }
+
     fun getListWithItemsFlow(listId: String): Flow<ShoppingListWithItems?> {
         return shoppingDao.getListByIdFlow(listId)
             .combine(shoppingDao.getItemsForListFlow(listId)) { list, items ->
@@ -99,6 +109,19 @@ class ShoppingRepository @Inject constructor(
         return shoppingDao.getSavedListsCountFlow()
     }
 
+    /**
+     * Attaches real-time listener for live collaborative shopping.
+     * Updates Room local database immediately upon remote changes.
+     */
+    fun attachLiveListListener(listId: String): ListenerRegistration? {
+        return firebaseSyncManager.attachLiveListListener(listId) { updatedData ->
+            repositoryScope.launch {
+                shoppingDao.insertOrUpdateList(updatedData.list)
+                shoppingDao.insertOrUpdateItems(updatedData.items)
+            }
+        }
+    }
+
     suspend fun createNewDraft(title: String = "New Shopping", location: String? = null): String {
         val listId = UUID.randomUUID().toString()
         val ownerId = authRepository.currentUserId
@@ -113,7 +136,8 @@ class ShoppingRepository @Inject constructor(
             createdAt = now,
             updatedAt = now,
             syncStatus = SyncStatus.PENDING_CREATE,
-            isDraft = true
+            isDraft = true,
+            status = ShoppingListEntity.STATUS_ACTIVE
         )
         shoppingDao.insertOrUpdateList(draftList)
         return listId
@@ -121,6 +145,13 @@ class ShoppingRepository @Inject constructor(
 
     suspend fun updateListMetadata(listId: String, title: String, location: String?) {
         val list = shoppingDao.getListByIdOnce(listId) ?: return
+        val currentUid = authRepository.currentUserId
+
+        // Enforce completed read-only restriction for members
+        if (list.isCompleted && list.ownerId != currentUid && list.isSharedWithMe) {
+            throw IllegalStateException("Completed shopping lists cannot be edited by invited participants.")
+        }
+
         val items = shoppingDao.getItemsForListOnce(listId)
         val currentTotal = items.sumOf { it.subtotalCents }
         val updatedList = list.copy(
@@ -131,6 +162,12 @@ class ShoppingRepository @Inject constructor(
             syncStatus = if (list.syncStatus == SyncStatus.SYNCED) SyncStatus.PENDING_UPDATE else list.syncStatus
         )
         shoppingDao.insertOrUpdateList(updatedList)
+
+        if (networkMonitor.isOnlineNow()) {
+            repositoryScope.launch {
+                runCatching { firebaseSyncManager.syncUnsyncedLists() }
+            }
+        }
     }
 
     suspend fun updateReceiptPhotoPath(listId: String, photoPath: String?) {
@@ -148,9 +185,16 @@ class ShoppingRepository @Inject constructor(
         itemId: String? = null,
         name: String,
         quantity: Int,
-        unitPriceCents: Long
+        unitPriceCents: Long,
+        barcode: String? = null
     ) {
         val list = shoppingDao.getListByIdOnce(listId)
+        val currentUid = authRepository.currentUserId
+
+        if (list != null && list.isCompleted && list.ownerId != currentUid && list.isSharedWithMe) {
+            throw IllegalStateException("Completed shopping lists cannot be edited by invited participants.")
+        }
+
         if (list == null) {
             val ownerId = authRepository.currentUserId
             val now = System.currentTimeMillis()
@@ -162,7 +206,8 @@ class ShoppingRepository @Inject constructor(
                 createdAt = now,
                 updatedAt = now,
                 syncStatus = SyncStatus.PENDING_CREATE,
-                isDraft = true
+                isDraft = true,
+                status = ShoppingListEntity.STATUS_ACTIVE
             )
             shoppingDao.insertOrUpdateList(newList)
         }
@@ -178,6 +223,7 @@ class ShoppingRepository @Inject constructor(
             quantity = quantity.coerceAtLeast(1),
             unitPriceCents = unitPriceCents.coerceAtLeast(0L),
             subtotalCents = subtotalCents,
+            barcode = barcode?.ifBlank { null },
             createdAt = now,
             updatedAt = now,
             syncStatus = SyncStatus.PENDING_CREATE
@@ -185,11 +231,49 @@ class ShoppingRepository @Inject constructor(
 
         shoppingDao.insertOrUpdateItem(itemEntity)
         recalculateAndSaveListTotal(listId)
+
+        // Trigger background sync if online
+        if (networkMonitor.isOnlineNow()) {
+            repositoryScope.launch {
+                runCatching { firebaseSyncManager.syncUnsyncedLists() }
+            }
+        }
+    }
+
+    suspend fun toggleItemPurchased(itemId: String, listId: String, isPurchased: Boolean) {
+        val items = shoppingDao.getItemsForListOnce(listId)
+        val item = items.find { it.id == itemId } ?: return
+
+        val updatedItem = item.copy(
+            isPurchased = isPurchased,
+            updatedAt = System.currentTimeMillis(),
+            syncStatus = if (item.syncStatus == SyncStatus.SYNCED) SyncStatus.PENDING_UPDATE else item.syncStatus
+        )
+        shoppingDao.insertOrUpdateItem(updatedItem)
+
+        if (networkMonitor.isOnlineNow()) {
+            repositoryScope.launch {
+                runCatching { firebaseSyncManager.syncUnsyncedLists() }
+            }
+        }
     }
 
     suspend fun deleteItem(itemId: String, listId: String) {
+        val list = shoppingDao.getListByIdOnce(listId)
+        val currentUid = authRepository.currentUserId
+
+        if (list != null && list.isCompleted && list.ownerId != currentUid && list.isSharedWithMe) {
+            throw IllegalStateException("Completed shopping lists cannot be edited by invited participants.")
+        }
+
         shoppingDao.deleteItem(itemId)
         recalculateAndSaveListTotal(listId)
+
+        if (networkMonitor.isOnlineNow()) {
+            repositoryScope.launch {
+                runCatching { firebaseSyncManager.syncUnsyncedLists() }
+            }
+        }
     }
 
     private suspend fun recalculateAndSaveListTotal(listId: String) {
@@ -232,6 +316,35 @@ class ShoppingRepository @Inject constructor(
         return Result.success(listId)
     }
 
+    /**
+     * Ends live shopping session. Only list owner can perform this action.
+     * Transitions status to COMPLETED and syncs change.
+     */
+    suspend fun endShoppingSession(listId: String): Result<Unit> {
+        val list = shoppingDao.getListByIdOnce(listId) ?: return Result.failure(Exception("List not found"))
+        val currentUid = authRepository.currentUserId
+
+        if (list.ownerId.isNotBlank() && currentUid.isNotBlank() && list.ownerId != currentUid && list.isSharedWithMe) {
+            return Result.failure(Exception("Only the shopping list creator can end the shopping session."))
+        }
+
+        val now = System.currentTimeMillis()
+        val completedList = list.copy(
+            status = ShoppingListEntity.STATUS_COMPLETED,
+            completedAt = now,
+            updatedAt = now,
+            syncStatus = SyncStatus.PENDING_UPDATE
+        )
+        shoppingDao.insertOrUpdateList(completedList)
+
+        val remoteResult = firebaseSyncManager.endShoppingSession(listId)
+        if (remoteResult.isSuccess) {
+            shoppingDao.insertOrUpdateList(completedList.copy(syncStatus = SyncStatus.SYNCED))
+        }
+
+        return Result.success(Unit)
+    }
+
     suspend fun softDeleteList(listId: String) {
         shoppingDao.softDeleteList(listId, System.currentTimeMillis())
         if (networkMonitor.isOnlineNow()) {
@@ -252,14 +365,32 @@ class ShoppingRepository @Inject constructor(
 
     suspend fun generateShareCodeForList(listId: String): String {
         val listWithItems = shoppingDao.getListWithItemsOnce(listId).firstOrNull() ?: return ""
-        val existingCode = listWithItems.list.shareCode
+        val list = listWithItems.list
+
+        // Legacy / completed list safety check: if list is completed or not a draft, ensure status is set to COMPLETED
+        val targetStatus = if (!list.isDraft && list.status != ShoppingListEntity.STATUS_ACTIVE) {
+            ShoppingListEntity.STATUS_COMPLETED
+        } else {
+            list.status
+        }
+
+        val existingCode = list.shareCode
         if (!existingCode.isNullOrEmpty()) {
+            val updatedList = list.copy(
+                status = targetStatus,
+                syncStatus = SyncStatus.PENDING_UPDATE
+            )
+            shoppingDao.insertOrUpdateList(updatedList)
+            if (networkMonitor.isOnlineNow()) {
+                repositoryScope.launch { runCatching { firebaseSyncManager.syncUnsyncedLists() } }
+            }
             return existingCode
         }
 
         val newCode = ShareCodeGenerator.generateCode()
-        val updatedList = listWithItems.list.copy(
+        val updatedList = list.copy(
             shareCode = newCode,
+            status = targetStatus,
             updatedAt = System.currentTimeMillis(),
             syncStatus = SyncStatus.PENDING_UPDATE
         )
@@ -275,8 +406,12 @@ class ShoppingRepository @Inject constructor(
     private val _sharedPreviewList = MutableStateFlow<ShoppingListWithItems?>(null)
     val sharedPreviewList: StateFlow<ShoppingListWithItems?> = _sharedPreviewList.asStateFlow()
 
-    suspend fun retrieveSharedListByCode(code: String): Result<String> {
-        val result = firebaseSyncManager.retrieveSharedListByCode(code)
+    /**
+     * Joins or retrieves a list by code, returning a [SharedListResult]
+     * that distinguishes active live sessions from static completed receipts.
+     */
+    suspend fun retrieveSharedListByCode(code: String): Result<SharedListResult> {
+        val result = firebaseSyncManager.joinCollaborativeListByCode(code)
         return result.map { itemWithList ->
             val currentUid = authRepository.currentUserId
             val existingLocalList = shoppingDao.getListByIdOnce(itemWithList.list.id)
@@ -284,22 +419,23 @@ class ShoppingRepository @Inject constructor(
             val isMyOwnList = (itemWithList.list.ownerId == currentUid && currentUid != "offline_user" && currentUid.isNotBlank())
                     || (existingLocalList != null && !existingLocalList.isSharedWithMe)
 
-            if (isMyOwnList) {
-                val ownedEntity = itemWithList.list.copy(
-                    ownerId = if (itemWithList.list.ownerId.isBlank()) currentUid else itemWithList.list.ownerId,
-                    isSharedWithMe = false,
-                    syncStatus = SyncStatus.SYNCED
-                )
-                shoppingDao.insertOrUpdateList(ownedEntity)
-                shoppingDao.insertOrUpdateItems(itemWithList.items)
-                _sharedPreviewList.value = null
-                itemWithList.list.id
-            } else if (existingLocalList != null) {
-                _sharedPreviewList.value = null
-                existingLocalList.id
+            val isCompleted = itemWithList.list.isCompleted || itemWithList.list.status == ShoppingListEntity.STATUS_COMPLETED
+
+            val savedEntity = itemWithList.list.copy(
+                ownerId = if (itemWithList.list.ownerId.isBlank()) currentUid else itemWithList.list.ownerId,
+                isSharedWithMe = !isMyOwnList,
+                status = if (isCompleted) ShoppingListEntity.STATUS_COMPLETED else ShoppingListEntity.STATUS_ACTIVE,
+                syncStatus = SyncStatus.SYNCED
+            )
+
+            shoppingDao.insertOrUpdateList(savedEntity)
+            shoppingDao.insertOrUpdateItems(itemWithList.items)
+            _sharedPreviewList.value = null
+
+            if (isCompleted) {
+                SharedListResult.CompletedReceipt(savedEntity.id)
             } else {
-                _sharedPreviewList.value = itemWithList
-                "shared"
+                SharedListResult.LiveSession(savedEntity.id)
             }
         }
     }
@@ -320,7 +456,8 @@ class ShoppingRepository @Inject constructor(
             syncStatus = SyncStatus.PENDING_CREATE,
             isSharedWithMe = false,
             shareCode = null,
-            isDraft = false
+            isDraft = false,
+            status = ShoppingListEntity.STATUS_ACTIVE
         )
 
         val newItems = sharedWithItems.items.map { oldItem ->
@@ -331,6 +468,7 @@ class ShoppingRepository @Inject constructor(
                 quantity = oldItem.quantity,
                 unitPriceCents = oldItem.unitPriceCents,
                 subtotalCents = oldItem.subtotalCents,
+                barcode = oldItem.barcode,
                 createdAt = now,
                 updatedAt = now,
                 syncStatus = SyncStatus.PENDING_CREATE

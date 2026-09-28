@@ -1,0 +1,68 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(resourceData) {
+      return isAuthenticated() && (resourceData.ownerId == request.auth.uid);
+    }
+
+    function isMember(resourceData) {
+      return isAuthenticated() && (
+        resourceData.ownerId == request.auth.uid ||
+        (resourceData.members != null && resourceData.members.contains(request.auth.uid))
+      );
+    }
+
+    // Shopping Lists Collection
+    match /shopping_lists/{listId} {
+      allow read: if isAuthenticated() && (
+        resource.data.ownerId == request.auth.uid ||
+        (resource.data.members != null && resource.data.members.contains(request.auth.uid)) ||
+        resource.data.shareCode != null
+      );
+
+      allow create: if isAuthenticated() && request.resource.data.ownerId == request.auth.uid;
+
+      allow update: if isAuthenticated() && (
+        // 1. Owner can always update or end the shopping session
+        isOwner(resource.data) ||
+
+        // 2. Members can update list/items ONLY while the session is ACTIVE
+        (
+          isMember(resource.data) &&
+          resource.data.status == "ACTIVE" &&
+          request.resource.data.status == "ACTIVE" &&
+          request.resource.data.ownerId == resource.data.ownerId
+        ) ||
+
+        // 3. Joining user appending UID to members list
+        (
+          resource.data.shareCode != null &&
+          request.resource.data.shareCode == resource.data.shareCode &&
+          request.resource.data.ownerId == resource.data.ownerId
+        )
+      );
+
+      allow delete: if isOwner(resource.data);
+    }
+
+    // Share Codes Collection
+    match /share_codes/{code} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isOwner(resource.data);
+    }
+
+    // Shared Community Barcode Database
+    match /community_products/{barcode} {
+      allow read: if true;
+      allow create, update: if isAuthenticated();
+      allow delete: if false;
+    }
+  }
+}

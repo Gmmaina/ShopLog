@@ -8,6 +8,7 @@ sealed class Screen(val route: String) {
     }
     object History : Screen("history")
     object Analytics : Screen("analytics")
+    object AnalyticsTrends : Screen("analytics_trends")
     object AnalyticsMonthDetail : Screen("analytics_detail/{monthYearKey}") {
         fun createRoute(monthYearKey: String) = "analytics_detail/$monthYearKey"
     }

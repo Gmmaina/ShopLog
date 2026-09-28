@@ -18,6 +18,10 @@ interface ShoppingDao {
     @Query("SELECT * FROM shopping_lists WHERE isDraft = 0 AND deletedAt IS NULL ORDER BY createdAt DESC")
     fun getSavedListsWithItemsFlow(): Flow<List<ShoppingListWithItems>>
 
+    @Transaction
+    @Query("SELECT * FROM shopping_lists WHERE status = 'ACTIVE' AND deletedAt IS NULL ORDER BY updatedAt DESC")
+    fun getActiveLiveListsFlow(): Flow<List<ShoppingListWithItems>>
+
     @Query("SELECT * FROM shopping_lists WHERE id = :listId AND deletedAt IS NULL")
     fun getListByIdFlow(listId: String): Flow<ShoppingListEntity?>
 

@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shoplog.data.local.entity.ShoppingListWithItems
 import com.example.shoplog.data.repository.ShoppingRepository
+import com.google.firebase.firestore.ListenerRegistration
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,11 +14,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-
-import kotlinx.coroutines.flow.map
 
 @HiltViewModel
 class ShoppingDetailsViewModel @Inject constructor(
@@ -29,6 +29,8 @@ class ShoppingDetailsViewModel @Inject constructor(
 
     private val _currentListId = MutableStateFlow<String?>(navListId)
     val currentListId: StateFlow<String?> = _currentListId.asStateFlow()
+
+    private var listenerRegistration: ListenerRegistration? = null
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val shoppingListWithItems: StateFlow<ShoppingListWithItems?> = _currentListId.flatMapLatest { listId ->
@@ -52,8 +54,25 @@ class ShoppingDetailsViewModel @Inject constructor(
     private val _shareCode = MutableStateFlow<String?>(null)
     val shareCode: StateFlow<String?> = _shareCode.asStateFlow()
 
+    init {
+        navListId?.let { startLiveSync(it) }
+    }
+
     fun initListId(listId: String) {
         _currentListId.value = listId
+        startLiveSync(listId)
+    }
+
+    private fun startLiveSync(listId: String) {
+        if (listId.isNotBlank() && listId != "shared") {
+            listenerRegistration?.remove()
+            listenerRegistration = repository.attachLiveListListener(listId)
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        listenerRegistration?.remove()
     }
 
     fun generateShareCode(onCodeGenerated: (code: String) -> Unit) {

@@ -4,7 +4,12 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shoplog.data.local.entity.ShoppingListWithItems
+import com.example.shoplog.data.model.Product
+import com.example.shoplog.data.model.ProductLookupResult
+import com.example.shoplog.data.repository.AuthRepository
+import com.example.shoplog.data.repository.ProductRepository
 import com.example.shoplog.data.repository.ShoppingRepository
+import com.google.firebase.firestore.ListenerRegistration
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,6 +25,8 @@ import javax.inject.Inject
 @HiltViewModel
 class CreateEditShoppingViewModel @Inject constructor(
     private val repository: ShoppingRepository,
+    private val productRepository: ProductRepository,
+    private val authRepository: AuthRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -37,45 +44,112 @@ class CreateEditShoppingViewModel @Inject constructor(
 
     val currencySymbol: StateFlow<String> = repository.currencySymbol
 
+    val currentUserId: String
+        get() = authRepository.currentUserId
+
+    private var listenerRegistration: ListenerRegistration? = null
+
     init {
         if (_currentListId.value == null) {
             viewModelScope.launch {
                 val newId = repository.createNewDraft()
                 _currentListId.value = newId
+                startLiveSync(newId)
             }
+        } else {
+            _currentListId.value?.let { startLiveSync(it) }
         }
     }
 
+    private fun startLiveSync(listId: String) {
+        listenerRegistration?.remove()
+        listenerRegistration = repository.attachLiveListListener(listId)
+    }
+
     fun initList(listIdParam: String) {
-        if (_currentListId.value != null) return
+        if (_currentListId.value != null && _currentListId.value == listIdParam) return
         viewModelScope.launch {
-            if (listIdParam == "new" || listIdParam.isBlank()) {
-                val newId = repository.createNewDraft()
-                _currentListId.value = newId
+            val targetId = if (listIdParam == "new" || listIdParam.isBlank()) {
+                repository.createNewDraft()
             } else {
-                _currentListId.value = listIdParam
+                listIdParam
             }
+            _currentListId.value = targetId
+            startLiveSync(targetId)
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        listenerRegistration?.remove()
     }
 
     fun updateListInfo(title: String, location: String?) {
         val listId = _currentListId.value ?: return
         viewModelScope.launch {
-            repository.updateListMetadata(listId, title, location)
+            runCatching {
+                repository.updateListMetadata(listId, title, location)
+            }
         }
     }
 
-    fun addOrUpdateItem(itemId: String? = null, name: String, quantity: Int, unitPriceCents: Long) {
+    fun addOrUpdateItem(
+        itemId: String? = null,
+        name: String,
+        quantity: Int,
+        unitPriceCents: Long,
+        barcode: String? = null
+    ) {
         val listId = _currentListId.value ?: return
         viewModelScope.launch {
-            repository.addOrUpdateItem(listId, itemId, name, quantity, unitPriceCents)
+            if (!barcode.isNullOrBlank()) {
+                productRepository.saveAndSubmitProduct(Product(barcode = barcode, name = name))
+            }
+            runCatching {
+                repository.addOrUpdateItem(listId, itemId, name, quantity, unitPriceCents, barcode)
+            }
         }
+    }
+
+    suspend fun lookupBarcode(barcode: String): ProductLookupResult {
+        return productRepository.findOrLookupProduct(barcode)
     }
 
     fun deleteItem(itemId: String) {
         val listId = _currentListId.value ?: return
         viewModelScope.launch {
-            repository.deleteItem(itemId, listId)
+            runCatching {
+                repository.deleteItem(itemId, listId)
+            }
+        }
+    }
+
+    fun toggleItemPurchased(itemId: String, isPurchased: Boolean) {
+        val listId = _currentListId.value ?: return
+        viewModelScope.launch {
+            runCatching {
+                repository.toggleItemPurchased(itemId, listId, isPurchased)
+            }
+        }
+    }
+
+    fun endShopping(onEnded: () -> Unit, onError: (String) -> Unit) {
+        val listId = _currentListId.value ?: return
+        viewModelScope.launch {
+            val result = repository.endShoppingSession(listId)
+            result.onSuccess {
+                onEnded()
+            }.onFailure { ex ->
+                onError(ex.message ?: "Failed to end shopping session.")
+            }
+        }
+    }
+
+    fun generateShareCode(onCodeGenerated: (code: String) -> Unit) {
+        val listId = _currentListId.value ?: return
+        viewModelScope.launch {
+            val code = repository.generateShareCodeForList(listId)
+            onCodeGenerated(code)
         }
     }
 

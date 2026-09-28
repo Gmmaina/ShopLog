@@ -40,7 +40,7 @@ fun RetrieveCodeDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = "Enter Shopping Code",
+                text = "Retrieve Shared Shopping List",
                 fontWeight = FontWeight.Bold
             )
         },
@@ -50,7 +50,7 @@ fun RetrieveCodeDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "Enter a 7-character code (e.g. AUG123D) to download and view a shared shopping list.",
+                    text = "Enter a 7-character code (e.g. AUG123D) to view a shared shopping list or join an active live collaborative shopping session.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -91,7 +91,7 @@ fun RetrieveCodeDialog(
                 enabled = isValid && !isLoading,
                 shape = RoundedCornerShape(10.dp)
             ) {
-                Text("View Shopping")
+                Text("Retrieve List")
             }
         },
         dismissButton = {

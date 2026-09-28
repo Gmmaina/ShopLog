@@ -28,6 +28,7 @@ import androidx.navigation.navArgument
 import com.example.shoplog.ui.screens.analytics.AnalyticsMonthDetailScreen
 import com.example.shoplog.ui.screens.analytics.AnalyticsMonthDetailViewModel
 import com.example.shoplog.ui.screens.analytics.AnalyticsScreen
+import com.example.shoplog.ui.screens.analytics.AnalyticsTrendsScreen
 import com.example.shoplog.ui.screens.analytics.AnalyticsViewModel
 import com.example.shoplog.ui.screens.details.ShoppingDetailsScreen
 import com.example.shoplog.ui.screens.details.ShoppingDetailsViewModel
@@ -73,10 +74,10 @@ fun MainNavGraph(
                                 if (currentRoute != item.route) {
                                     navController.navigate(item.route) {
                                         popUpTo(navController.graph.findStartDestination().id) {
-                                            saveState = false
+                                            saveState = true
                                         }
                                         launchSingleTop = true
-                                        restoreState = false
+                                        restoreState = true
                                     }
                                 }
                             },
@@ -149,6 +150,18 @@ fun MainNavGraph(
                 val viewModel = hiltViewModel<AnalyticsViewModel>()
                 AnalyticsScreen(
                     viewModel = viewModel,
+                    onViewReceiptDetails = { listId ->
+                        navController.navigate(Screen.Details.createRoute(listId))
+                    }
+                )
+            }
+
+            // Analytics Trends & Charts Destination
+            composable(Screen.AnalyticsTrends.route) {
+                val viewModel = hiltViewModel<AnalyticsViewModel>()
+                AnalyticsTrendsScreen(
+                    viewModel = viewModel,
+                    onNavigateBack = { navController.popBackStack() },
                     onSelectMonth = { monthYearKey ->
                         navController.navigate(Screen.AnalyticsMonthDetail.createRoute(monthYearKey))
                     }

@@ -16,8 +16,11 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -27,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,8 +45,11 @@ fun ReceiptCard(
     modifier: Modifier = Modifier,
     isEditable: Boolean = true,
     onItemClick: ((ShoppingItemEntity) -> Unit)? = null,
-    onAddItemClick: (() -> Unit)? = null
+    onAddItemClick: (() -> Unit)? = null,
+    onItemTogglePurchased: ((item: ShoppingItemEntity, isPurchased: Boolean) -> Unit)? = null
 ) {
+    val purchasedCount = items.count { it.isPurchased }
+    val progress = if (items.isNotEmpty()) purchasedCount.toFloat() / items.size.toFloat() else 0f
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -80,6 +87,37 @@ fun ReceiptCard(
                     text = "${items.size} ${if (items.size == 1) "item" else "items"}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            if (items.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "In Cart: $purchasedCount / ${items.size} items",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "${(progress * 100).toInt()}%",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceContainerHigh
                 )
             }
 
@@ -126,6 +164,9 @@ fun ReceiptCard(
                         .padding(vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    if (onItemTogglePurchased != null) {
+                        Spacer(modifier = Modifier.width(36.dp))
+                    }
                     Text(
                         text = "Item",
                         style = MaterialTheme.typography.labelMedium,
@@ -175,13 +216,26 @@ fun ReceiptCard(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .then(clickableModifier)
-                                .padding(vertical = 8.dp),
+                                .padding(vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            if (onItemTogglePurchased != null) {
+                                Checkbox(
+                                    checked = item.isPurchased,
+                                    onCheckedChange = { checked ->
+                                        onItemTogglePurchased(item, checked)
+                                    },
+                                    colors = CheckboxDefaults.colors(
+                                        checkedColor = MaterialTheme.colorScheme.primary
+                                    )
+                                )
+                            }
                             Text(
                                 text = item.name,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    textDecoration = if (item.isPurchased) TextDecoration.LineThrough else TextDecoration.None
+                                ),
+                                color = if (item.isPurchased) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(2.5f)
@@ -189,7 +243,7 @@ fun ReceiptCard(
                             Text(
                                 text = item.quantity.toString(),
                                 style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                                color = MaterialTheme.colorScheme.onSurface,
+                                color = if (item.isPurchased) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurface,
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.weight(0.8f)
                             )
@@ -206,7 +260,7 @@ fun ReceiptCard(
                                     fontFamily = FontFamily.Monospace,
                                     fontWeight = FontWeight.SemiBold
                                 ),
-                                color = MaterialTheme.colorScheme.onSurface,
+                                color = if (item.isPurchased) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurface,
                                 textAlign = TextAlign.End,
                                 modifier = Modifier.weight(1.7f)
                             )

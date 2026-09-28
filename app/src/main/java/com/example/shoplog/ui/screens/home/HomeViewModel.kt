@@ -3,6 +3,7 @@ package com.example.shoplog.ui.screens.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shoplog.data.local.entity.ShoppingListWithItems
+import com.example.shoplog.data.repository.SharedListResult
 import com.example.shoplog.data.repository.ShoppingRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +28,9 @@ class HomeViewModel @Inject constructor(
     val latestDraftList: StateFlow<ShoppingListWithItems?> = repository.getLatestDraftListFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    val activeLiveLists: StateFlow<List<ShoppingListWithItems>> = repository.getActiveLiveListsFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val currencySymbol: StateFlow<String> = repository.currencySymbol
 
     val isOnline: StateFlow<Boolean> = repository.isOnline
@@ -45,14 +49,14 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun retrieveSharedList(code: String, onSuccess: (listId: String) -> Unit) {
+    fun retrieveSharedList(code: String, onResult: (SharedListResult) -> Unit) {
         viewModelScope.launch {
             _isLoading.value = true
             _retrieveMessage.value = null
             val result = repository.retrieveSharedListByCode(code)
             _isLoading.value = false
-            result.onSuccess { targetListId ->
-                onSuccess(targetListId)
+            result.onSuccess { sharedResult ->
+                onResult(sharedResult)
             }.onFailure { exception ->
                 _retrieveMessage.value = exception.message ?: "Failed to retrieve shopping list."
             }

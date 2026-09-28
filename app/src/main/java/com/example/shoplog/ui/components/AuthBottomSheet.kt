@@ -51,16 +51,20 @@ import androidx.compose.ui.unit.dp
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialException
+import com.google.android.gms.common.ConnectionResult
+import com.google.android.gms.common.GoogleApiAvailability
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import kotlinx.coroutines.launch
+import androidx.compose.ui.res.stringResource
+import com.example.shoplog.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AuthBottomSheet(
     isLoading: Boolean,
     errorMessage: String? = null,
-    webClientId: String = "610348883121-uuld7b6simordg0i2mr4sgv35lb3o7qb.apps.googleusercontent.com",
+    webClientId: String = "",
     onDismiss: () -> Unit,
     onEmailSignIn: (email: String, pass: String) -> Unit,
     onEmailSignUp: (email: String, pass: String) -> Unit,
@@ -70,6 +74,7 @@ fun AuthBottomSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val effectiveWebClientId = webClientId.ifBlank { stringResource(id = R.string.default_web_client_id) }
 
     var selectedTabIndex by remember { mutableIntStateOf(0) } // 0 = Sign In, 1 = Register
     var email by remember { mutableStateOf("") }
@@ -221,7 +226,7 @@ fun AuthBottomSheet(
                     scope.launch {
                         triggerGoogleSignIn(
                             context = context,
-                            webClientId = webClientId,
+                            webClientId = effectiveWebClientId,
                             onSuccess = onGoogleSignIn,
                             onError = { err ->
                                 Log.e("AuthBottomSheet", "Google sign in error: $err")
@@ -266,6 +271,14 @@ private suspend fun triggerGoogleSignIn(
     onError: (String) -> Unit
 ) {
     try {
+        val googleApiAvailability = GoogleApiAvailability.getInstance()
+        val resultCode = googleApiAvailability.isGooglePlayServicesAvailable(context)
+        if (resultCode != ConnectionResult.SUCCESS) {
+            val errorString = googleApiAvailability.getErrorString(resultCode)
+            onError("Google Play Services is unavailable ($errorString). Please update Google Play Services.")
+            return
+        }
+
         val effectiveClientId = getEffectiveWebClientId(context, webClientId)
         val credentialManager = CredentialManager.create(context)
         val googleIdOption = GetGoogleIdOption.Builder()
@@ -283,7 +296,11 @@ private suspend fun triggerGoogleSignIn(
         onSuccess(googleCredential.idToken)
     } catch (e: GetCredentialException) {
         onError(e.message ?: "Google Sign-In cancelled or unavailable.")
+    } catch (e: SecurityException) {
+        Log.e("AuthBottomSheet", "SecurityException during Google Sign-In (GMS broker error)", e)
+        onError("Google Play Services security error. Please ensure Google Play Services is updated and enabled on this device.")
     } catch (e: Exception) {
+        Log.e("AuthBottomSheet", "Unexpected error during Google Sign-In", e)
         onError(e.message ?: "Failed to sign in with Google.")
     }
 }

@@ -14,13 +14,13 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class NetworkMonitor @Inject constructor(
+open class NetworkMonitor @Inject constructor(
     @param:ApplicationContext private val context: Context
 ) {
     private val connectivityManager =
         context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
 
-    val isOnline: Flow<Boolean> = callbackFlow {
+    open val isOnline: Flow<Boolean> = callbackFlow {
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 trySend(true)
@@ -56,7 +56,7 @@ class NetworkMonitor @Inject constructor(
         }
     }.distinctUntilChanged()
 
-    fun isOnlineNow(): Boolean {
+    open fun isOnlineNow(): Boolean {
         return checkIsOnline()
     }
 

@@ -20,21 +20,27 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.BookmarkAdded
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -58,6 +64,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.shoplog.core.util.DocumentExporter
 import com.example.shoplog.core.util.Money
 import com.example.shoplog.data.local.entity.ShoppingItemEntity
 import com.example.shoplog.ui.components.ReceiptCard
@@ -81,6 +88,7 @@ fun ShoppingDetailsScreen(
 
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showShareDialog by remember { mutableStateOf(false) }
+    var showExportMenu by remember { mutableStateOf(false) }
     var generatedShareCode by remember { mutableStateOf("") }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -142,10 +150,46 @@ fun ShoppingDetailsScreen(
                 },
                 actions = {
                     if (listWithItems != null) {
-                        IconButton(onClick = {
-                            exportListToCsv(context, listWithItems!!.list.title, listWithItems!!.items, listWithItems!!.list.totalCents, currencySymbol)
-                        }) {
-                            Icon(Icons.Default.FileDownload, contentDescription = "Export CSV Spreadsheet")
+                        Box {
+                            IconButton(onClick = { showExportMenu = true }) {
+                                Icon(Icons.Default.FileDownload, contentDescription = "Export/Download Shopping List")
+                            }
+
+                            DropdownMenu(
+                                expanded = showExportMenu,
+                                onDismissRequest = { showExportMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("PDF Document (.pdf)") },
+                                    leadingIcon = { Icon(Icons.Default.PictureAsPdf, contentDescription = null) },
+                                    onClick = {
+                                        showExportMenu = false
+                                        listWithItems?.let { data ->
+                                            DocumentExporter.exportToPdf(context, data.list, data.items, currencySymbol)
+                                        }
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Excel / CSV (.csv)") },
+                                    leadingIcon = { Icon(Icons.Default.TableChart, contentDescription = null) },
+                                    onClick = {
+                                        showExportMenu = false
+                                        listWithItems?.let { data ->
+                                            DocumentExporter.exportToCsv(context, data.list, data.items, currencySymbol)
+                                        }
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Word / Text Document (.doc)") },
+                                    leadingIcon = { Icon(Icons.Default.Description, contentDescription = null) },
+                                    onClick = {
+                                        showExportMenu = false
+                                        listWithItems?.let { data ->
+                                            DocumentExporter.exportToDocText(context, data.list, data.items, currencySymbol)
+                                        }
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -375,30 +419,4 @@ fun ShoppingDetailsScreen(
             }
         }
     }
-}
-
-private fun exportListToCsv(
-    context: Context,
-    title: String,
-    items: List<ShoppingItemEntity>,
-    totalCents: Long,
-    currencySymbol: String
-) {
-    val csvContent = StringBuilder().apply {
-        append("Item Name,Quantity,Unit Price ($currencySymbol),Subtotal ($currencySymbol)\n")
-        items.forEach { item ->
-            val unitPrice = Money.format(item.unitPriceCents, "").trim()
-            val subtotal = Money.format(item.subtotalCents, "").trim()
-            append("\"${item.name.replace("\"", "\"\"")}\",${item.quantity},$unitPrice,$subtotal\n")
-        }
-        append("\nGrand Total,,,,${Money.format(totalCents, currencySymbol)}\n")
-    }.toString()
-
-    val sendIntent = Intent().apply {
-        action = Intent.ACTION_SEND
-        putExtra(Intent.EXTRA_TEXT, csvContent)
-        putExtra(Intent.EXTRA_SUBJECT, "$title - Shopping Receipt CSV")
-        type = "text/csv"
-    }
-    context.startActivity(Intent.createChooser(sendIntent, "Export Receipt CSV / Excel"))
 }
